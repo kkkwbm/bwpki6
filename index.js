@@ -115,6 +115,35 @@ app.get('/user-github', function (req, res) {
     })
 });
 
+app.get('/logout', (req, res) => {
+    authed = false;  // Invalidate server-side authentication flag
+
+    // Redirect to client-side logout page
+    res.redirect('/logout-page');
+});
+
+app.get('/logout-page', (req, res) => {
+    const logoutPageHTML = `
+        <html>
+            <head>
+                <script src="https://apis.google.com/js/platform.js" async defer></script>
+                <script>
+                    function signOut() {
+                        var auth2 = gapi.auth2.getAuthInstance();
+                        auth2.signOut().then(function () {
+                            console.log('User signed out.');
+                            window.location = '/';
+                        });
+                    }
+                </script>
+            </head>
+            <body onload="signOut();">
+                <p>Logging out...</p>
+            </body>
+        </html>
+    `;
+    res.send(logoutPageHTML);
+});
 
 const port = 8080
 app.listen(port, () => console.log(`Server running at ${port}`));
