@@ -35,6 +35,41 @@ app.get('/login', (req, res) => {
     }
 });
 
+const getUsers = (request, response) => {
+    console.log('Pobieram dane ...');
+    pool.query('SELECT * FROM users', (error, res) => {
+        if (error) {
+            console.error('Error fetching users', error);
+            response.status(500).send('Error fetching users');
+        } else {
+            console.log('Dostałem ...');
+            let userDisplayData = res.rows.map(row => {
+                return `<div>User ID: ${row.id}, Name: ${row.name}, Joined: ${row.joined}, Last Visit: ${row.lastvisit}, Counter: ${row.counter}</div>`;
+            }).join('');
+            response.send(userDisplayData);
+        }
+    });
+};
+
+const upsertUser = async (userInfo) => {
+    const { name } = userInfo;
+    const currentDate = new Date().toISOString();
+
+    const query = `
+        INSERT INTO users (name, joined, lastvisit, counter)
+        VALUES ($1, $2, $2, 1)
+            ON CONFLICT (name)
+        DO UPDATE SET lastvisit = $2, counter = users.counter + 1;
+    `;
+
+    try {
+        await pool.query(query, [name, currentDate]);
+        console.log('User upserted successfully.');
+    } catch (error) {
+        console.error('Error upserting user:', error);
+    }
+};
+
 
 
 app.get('/user', (req, res) => {
@@ -45,35 +80,47 @@ app.get('/user', (req, res) => {
     oauth2.userinfo.v2.me.get(function (err, result) {
         let loggedUser;
         if (err) {
-            res.send('wystapil blad');
+            console.log('Error fetching Google user data:', err);
+            return res.status(500).send('Error during the fetching of user data');
         }
         else {
             loggedUser = result.data.name;
             console.log(loggedUser);
+            // Display logged-in user info and provide a link to fetch user data from database
+            const userInfoDisplay = `Logged in: ${result.data.name} <br/> <img src='${result.data.picture}' height='23' width='23' /> <a href='/logout'>Wyloguj</a><br/><br/> <a href='/users'>Show Users</a>`;
+            res.send(userInfoDisplay);
         }
-        res.send(`Logged in: ${loggedUser} <br/> <img src='${result.data.picture}' height='23' width='23' /> <a href='/logout'>Wyloguj</a>`)
     });
 })
+
+app.get('/users', getUsers);
 
 app.get('/logout', (req, res) => {
     authed = false;
     res.redirect('/');
 })
 
-app.get('/auth/google/callback', function (req, res) {
-    const code = req.query.code
+app.get('/auth/google/callback', async function (req, res) {
+    const code = req.query.code;
     if (code) {
-        oAuth2Client.getToken(code, function (err, tokens) {
-            if (err) {
-                console.log('Error authenticating')
-                console.log(err);
-            } else {
-                console.log('Successfully authenticated');
-                oAuth2Client.setCredentials(tokens);
-                authed = true;
-                res.redirect('/user')
-            }
-        });
+        try {
+            const { tokens } = await oAuth2Client.getToken(code);
+            oAuth2Client.setCredentials(tokens);
+            authed = true;
+
+            const oauth2 = google.oauth2({ auth: oAuth2Client, version: 'v2' });
+            const userinfo = await oauth2.userinfo.v2.me.get();
+
+            await upsertUser({
+                email: userinfo.data.email,
+                name: userinfo.data.name
+            });
+
+            res.redirect('/user');
+        } catch (err) {
+            console.log('Error authenticating or fetching user data:', err);
+            res.redirect('/');
+        }
     }
 });
 
@@ -111,7 +158,7 @@ app.get('/user-github', function (req, res) {
             Authorization: 'token ' + access_token
         }
     }).then((response) => {
-        res.send(`Name: ${response.data.name} <br/> <a href='/logout'>Wyloguj</a>`)
+        res.send(`Name: ${response.data.name} <br/> <a href='/logout'>Wyloguj</a> <br> <a href='/users'>Show Users</a>`)
     })
 });
 
@@ -143,6 +190,20 @@ app.get('/logout-page', (req, res) => {
         </html>
     `;
     res.send(logoutPageHTML);
+});
+
+require('dotenv').config();
+const { Pool } = require('pg');
+
+const pool = new Pool({
+    user: process.env.DB_USER,
+    host: process.env.DB_HOST,
+    database: process.env.DB_DATABASE,
+    password: process.env.DB_PASSWORD,
+    port: parseInt(process.env.DB_PORT, 10),
+    ssl: {
+        rejectUnauthorized: false, // For development purposes only; for production set up proper SSL certificate validation
+    }
 });
 
 const port = 8080
