@@ -20,7 +20,39 @@ var authed = false;
 app.get('/', (req, res) => {
     if (authed)
         return res.redirect('/user');
-    res.send(`Witaj na stronie <br> <a href='/login'>Zaloguj się przez Google</a> <br> <a href='/login-github'> Zaloguj się przez GitHub</a>`)
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Welcome</title>
+            <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+        </head>
+        <body>
+            <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                <a class="navbar-brand" href="#">YourApp</a>
+                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav">
+                        <li class="nav-item active">
+                            <a class="nav-link" href="/">Home <span class="sr-only">(current)</span></a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/login">Login</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/login-github">Login with GitHub</a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+            <h1>Welcome to the site</h1>
+            <a href='/login'>Log in with Google</a> <br>
+            <a href='/login-github'>Log in with GitHub</a>
+        </body>
+        </html>
+    `);
 })
 
 app.get('/login', (req, res) => {
@@ -93,7 +125,41 @@ app.get('/user', (req, res) => {
     });
 })
 
-app.get('/users', getUsers);
+app.get('/users', (req, res) => {
+    // Assuming `pool` is your database connection pool
+    pool.query('SELECT * FROM users', (error, results) => {
+        if (error) {
+            res.status(500).send('Error fetching users');
+        } else {
+            let userTableRows = results.rows.map(user => `
+                <tr>
+                    <td>${user.id}</td>
+                    <td>${user.name}</td>
+                    <td>${user.joined}</td>
+                    <td>${user.lastvisit}</td>
+                    <td>${user.counter}</td>
+                </tr>
+            `).join('');
+
+            res.send(`
+                <table class="table table-hover">
+                    <thead class="thead-light">
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Joined</th>
+                            <th>Last Visit</th>
+                            <th>Counter</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${userTableRows}
+                    </tbody>
+                </table>
+            `);
+        }
+    });
+});
 
 app.get('/logout', (req, res) => {
     authed = false;
